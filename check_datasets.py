@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-HF Dataset Checker for P2SAMAPA ETF Datasets
-Validates 13 datasets with mixed formats (Parquet/CSV) and folder structures
+HF Dataset Checker for P2SAMAPA ETF Datasets with NYSE Market Calendar Support
+Validates 13 datasets considering US market holidays and weekends
 """
 
 import json
@@ -11,9 +11,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
 from huggingface_hub import HfApi, hf_hub_download, list_repo_files
-from datasets import load_dataset
 import warnings
 warnings.filterwarnings('ignore')
+
+# Import NYSE calendar
+try:
+    import exchange_calendars as xcals
+    from pandas_market_calendars import get_calendar
+    NYSE_CALENDAR_AVAILABLE = True
+except ImportError:
+    NYSE_CALENDAR_AVAILABLE = False
+    print("Warning: exchange-calendars not installed. Install with: pip install exchange-calendars pandas-market-calendars")
 
 # Dataset configurations - 13 P2SAMAPA ETF datasets
 DATASETS_CONFIG = [
@@ -123,32 +131,178 @@ DATASETS_CONFIG = [
     }
 ]
 
-def check_freshness(df, date_column, max_days=7):
-    """Check if dataset has recent data (within last 7 days by default)"""
+class NYSEMarketCalendar:
+    """NYSE Market Calendar handler for US ETF data validation"""
+    
+    def __init__(self):
+        self.calendar = None
+        self.schedule = None
+        self._init_calendar()
+    
+    def _init_calendar(self):
+        """Initialize NYSE calendar"""
+        if not NYSE_CALENDAR_AVAILABLE:
+            return
+        
+        try:
+            # Try pandas-market-calendars first
+            self.calendar = get_calendar('NYSE')
+        except:
+            try:
+                # Fallback to exchange-calendars
+                self.calendar = xcals.get_calendar("XNYS")
+            except:
+                print("Warning: Could not initialize NYSE calendar")
+                self.calendar = None
+    
+    def is_trading_day(self, date):
+        """Check if given date is a NYSE trading day"""
+        if self.calendar is None:
+            # Fallback: just check weekday (0=Monday, 6=Sunday)
+            return date.weekday() < 5
+        
+        if isinstance(date, str):
+            date = pd.Timestamp(date)
+        
+        # Convert to pandas Timestamp if needed
+        if not isinstance(date, pd.Timestamp):
+            date = pd.Timestamp(date)
+        
+        # Check if date is in valid trading days
+        try:
+            # Get schedule for the date
+            schedule = self.calendar.schedule(start_date=date, end_date=date)
+            return len(schedule) > 0
+        except:
+            # Fallback to weekday check
+            return date.weekday() < 5
+    
+    def get_last_trading_day(self, date=None):
+        """Get the most recent trading day before or on given date"""
+        if date is None:
+            date = pd.Timestamp.now()
+        elif isinstance(date, str):
+            date = pd.Timestamp(date)
+        
+        if not isinstance(date, pd.Timestamp):
+            date = pd.Timestamp(date)
+        
+        # Go back day by day until we find a trading day
+        check_date = date
+        max_days_back = 10  # Don't go back more than 10 days
+        
+        for _ in range(max_days_back):
+            if self.is_trading_day(check_date):
+                return check_date
+            check_date -= timedelta(days=1)
+        
+        return date  # Return original if no trading day found
+    
+    def get_expected_trading_days(self, start_date, end_date):
+        """Get all expected trading days between start and end date"""
+        if self.calendar is None:
+            # Fallback: generate business days excluding weekends
+            dates = pd.bdate_range(start=start_date, end=end_date)
+            return dates
+        
+        try:
+            schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+            return schedule.index
+        except:
+            # Fallback
+            return pd.bdate_range(start=start_date, end=end_date)
+    
+    def get_trading_days_ago(self, n_days, from_date=None):
+        """Get the date n trading days ago from from_date"""
+        if from_date is None:
+            from_date = pd.Timestamp.now()
+        elif isinstance(from_date, str):
+            from_date = pd.Timestamp(from_date)
+        
+        if not isinstance(from_date, pd.Timestamp):
+            from_date = pd.Timestamp(from_date)
+        
+        # Get last n trading days
+        # Start from a date far enough in the past
+        start_lookup = from_date - timedelta(days=n_days * 2 + 10)
+        
+        try:
+            trading_days = self.get_expected_trading_days(start_lookup, from_date)
+            # Filter to dates <= from_date
+            valid_days = trading_days[trading_days <= from_date]
+            
+            if len(valid_days) >= n_days:
+                return valid_days[-n_days]
+            else:
+                return from_date - timedelta(days=n_days)  # Fallback
+        except:
+            # Simple fallback
+            return from_date - timedelta(days=n_days)
+
+# Initialize global calendar
+nyse_calendar = NYSEMarketCalendar()
+
+def check_freshness_with_calendar(df, date_column, max_trading_days=5):
+    """
+    Check data freshness using NYSE trading calendar
+    Accounts for weekends and US market holidays
+    """
     if date_column not in df.columns:
-        return False, f"Date column '{date_column}' not found", None
+        return False, f"Date column '{date_column}' not found", None, None
     
     try:
-        # Try to parse date column
+        # Parse dates
         dates = pd.to_datetime(df[date_column], errors='coerce')
         max_date = dates.max()
         min_date = dates.min()
         
         if pd.isna(max_date):
-            return False, "No valid dates found", None
+            return False, "No valid dates found", None, None
         
-        days_old = (datetime.now() - max_date).days
+        # Get today's date and last trading day
+        today = pd.Timestamp.now().normalize()
+        last_trading_day = nyse_calendar.get_last_trading_day(today)
         
-        if days_old > max_days:
-            return False, f"Data is {days_old} days old (max allowed: {max_days})", max_date
+        # Calculate trading days difference
+        trading_days_diff = 0
+        check_date = max_date.normalize()
         
-        return True, f"Fresh (last date: {max_date.strftime('%Y-%m-%d')})", max_date
+        # Count trading days between max_date and last_trading_day
+        while check_date < last_trading_day:
+            check_date += timedelta(days=1)
+            if nyse_calendar.is_trading_day(check_date):
+                trading_days_diff += 1
+        
+        # Also check for missing recent trading days in dataset
+        recent_trading_days = nyse_calendar.get_expected_trading_days(max_date, last_trading_day)
+        dataset_dates = set(dates.dropna().normalize().unique())
+        
+        missing_trading_days = []
+        for trading_day in recent_trading_days:
+            if trading_day.normalize() not in dataset_dates:
+                missing_trading_days.append(trading_day.strftime('%Y-%m-%d'))
+        
+        # Determine status
+        is_fresh = trading_days_diff <= max_trading_days
+        
+        if trading_days_diff == 0:
+            freshness_msg = f"Up to date (last: {max_date.strftime('%Y-%m-%d')}, last trading day: {last_trading_day.strftime('%Y-%m-%d')})"
+        else:
+            freshness_msg = f"{trading_days_diff} trading day(s) behind (last: {max_date.strftime('%Y-%m-%d')}, expected: {last_trading_day.strftime('%Y-%m-%d')})"
+        
+        # Add missing days info if any
+        if missing_trading_days and len(missing_trading_days) <= 5:
+            freshness_msg += f" | Missing: {', '.join(missing_trading_days)}"
+        elif missing_trading_days:
+            freshness_msg += f" | Missing {len(missing_trading_days)} trading days"
+        
+        return is_fresh, freshness_msg, max_date, missing_trading_days
         
     except Exception as e:
-        return False, f"Date parsing error: {str(e)}", None
+        return False, f"Date parsing error: {str(e)}", None, None
 
 def check_dataset(config, filter_name=None):
-    """Check a single dataset"""
+    """Check a single dataset with NYSE calendar awareness"""
     name = config["name"]
     
     if filter_name and name != filter_name:
@@ -165,7 +319,11 @@ def check_dataset(config, filter_name=None):
         "warnings": [],
         "stats": {},
         "files_found": [],
-        "files_missing": []
+        "files_missing": [],
+        "market_calendar": {
+            "using_nyse_calendar": NYSE_CALENDAR_AVAILABLE and nyse_calendar.calendar is not None,
+            "last_trading_day": nyse_calendar.get_last_trading_day().strftime('%Y-%m-%d') if nyse_calendar.calendar else None
+        }
     }
     
     api = HfApi()
@@ -262,21 +420,26 @@ def check_dataset(config, filter_name=None):
                 f"Columns with >10% null values: {dict(high_null_cols)}"
             )
         
-        # Check data freshness if enabled and date column exists
+        # Check data freshness using NYSE calendar if enabled and date column exists
         check_fresh = os.environ.get("CHECK_FRESHNESS", "true").lower() == "true"
         if check_fresh and config.get("date_column"):
-            is_fresh, freshness_msg, last_date = check_freshness(
-                df, config["date_column"]
+            is_fresh, freshness_msg, last_date, missing_days = check_freshness_with_calendar(
+                df, config["date_column"], max_trading_days=5
             )
             result["stats"]["last_date"] = str(last_date) if last_date else None
             result["stats"]["data_freshness"] = freshness_msg
+            result["stats"]["missing_trading_days"] = missing_days if missing_days else []
+            result["stats"]["trading_days_behind"] = len(missing_days) if missing_days else 0
             
             if not is_fresh:
                 result["issues"].append(f"Data freshness issue: {freshness_msg}")
+            elif missing_days and len(missing_days) > 0:
+                result["warnings"].append(f"Missing trading days: {missing_days[:3]}...")
         
         # Determine health
         if result["issues"]:
-            result["health"] = "critical" if any("error" in i.lower() or "empty" in i.lower() for i in result["issues"]) else "warning"
+            critical_issues = [i for i in result["issues"] if any(x in i.lower() for x in ["error", "empty", "cannot access", "no data files"])]
+            result["health"] = "critical" if critical_issues else "warning"
             result["status"] = "issues_found"
         else:
             result["health"] = "healthy"
@@ -309,12 +472,20 @@ def main():
     """Main execution"""
     filter_name = os.environ.get("DATASET_FILTER", "").strip()
     
-    print("=" * 60)
+    print("=" * 70)
     print("P2SAMAPA ETF Dataset Checker")
     print(f"Started at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    
+    # Show calendar info
+    if NYSE_CALENDAR_AVAILABLE and nyse_calendar.calendar:
+        last_trading = nyse_calendar.get_last_trading_day()
+        print(f"NYSE Calendar: Active (Last trading day: {last_trading.strftime('%Y-%m-%d')})")
+    else:
+        print("NYSE Calendar: Not available (using weekday fallback)")
+    
     if filter_name:
         print(f"Filter: Checking only {filter_name}")
-    print("=" * 60)
+    print("=" * 70)
     
     results = []
     
@@ -328,12 +499,12 @@ def main():
     warning = sum(1 for r in results if r["health"] == "warning")
     critical = sum(1 for r in results if r["health"] == "critical")
     
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
     print("SUMMARY")
     print(f"  Healthy:   {healthy}")
     print(f"  Warning:   {warning}")
     print(f"  Critical:  {critical}")
-    print("=" * 60)
+    print("=" * 70)
     
     # Save results
     output = {
@@ -343,6 +514,11 @@ def main():
             "healthy": healthy,
             "warning": warning,
             "critical": critical
+        },
+        "market_calendar": {
+            "type": "NYSE",
+            "last_trading_day": nyse_calendar.get_last_trading_day().strftime('%Y-%m-%d') if nyse_calendar.calendar else None,
+            "active": NYSE_CALENDAR_AVAILABLE and nyse_calendar.calendar is not None
         },
         "datasets": results
     }
@@ -362,6 +538,15 @@ def main():
     print(f"\nResults saved to:")
     print(f"  - data/latest_check.json")
     print(f"  - {history_file}")
+    
+    # Show calendar-aware summary
+    if nyse_calendar.calendar:
+        print(f"\n📅 NYSE Calendar Note:")
+        print(f"   Last trading day: {nyse_calendar.get_last_trading_day().strftime('%A, %B %d, %Y')}")
+        next_trading = nyse_calendar.get_last_trading_day() + timedelta(days=1)
+        while not nyse_calendar.is_trading_day(next_trading):
+            next_trading += timedelta(days=1)
+        print(f"   Next trading day: {next_trading.strftime('%A, %B %d, %Y')}")
     
     # Exit with error code if any critical issues
     if critical > 0:
