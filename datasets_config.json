@@ -1,0 +1,108 @@
+{
+  "datasets": [
+    {
+      "name": "P2SAMAPA/p2-etf-regime-predictor",
+      "files": ["regime_predictor_data.parquet"],
+      "expected_columns": ["date", "ticker", "regime", "features"],
+      "date_column": "date",
+      "min_rows": 100,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/P2-ETF-DQN-ENGINE-DATASET",
+      "files": ["dqn_data.parquet", "data/dqn_data.parquet"],
+      "expected_columns": ["state", "action", "reward", "next_state"],
+      "date_column": null,
+      "min_rows": 1000,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/p2-etf-deepwave-dl",
+      "files": ["deepwave_data.parquet", "data/deepwave_data.parquet"],
+      "expected_columns": ["date", "ticker", "wave_features", "target"],
+      "date_column": "date",
+      "min_rows": 500,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/my-etf-data",
+      "files": ["etf_data.csv", "data/etf_data.csv", "etf_data.parquet"],
+      "expected_columns": ["date", "ticker", "open", "high", "low", "close", "volume"],
+      "date_column": "date",
+      "min_rows": 1000,
+      "type": "mixed"
+    },
+    {
+      "name": "P2SAMAPA/etf-entropy-dataset",
+      "files": ["entropy_data.parquet", "data/entropy_data.parquet"],
+      "expected_columns": ["date", "ticker", "entropy_value", "window"],
+      "date_column": "date",
+      "min_rows": 100,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/p2-etf-hurst-data",
+      "files": ["hurst_data.parquet", "data/hurst_data.parquet"],
+      "expected_columns": ["date", "ticker", "hurst_exponent", "rs_value"],
+      "date_column": "date",
+      "min_rows": 100,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/p2-etf-merton-ann-data",
+      "files": ["merton_data.parquet", "data/merton_data.parquet"],
+      "expected_columns": ["date", "ticker", "jump_intensity", "jump_size", "diffusion"],
+      "date_column": "date",
+      "min_rows": 100,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/etf-dlinear-cross-data",
+      "files": ["dlinear_data.parquet", "data/dlinear_data.parquet"],
+      "expected_columns": ["date", "ticker", "seasonal", "trend", "residual"],
+      "date_column": "date",
+      "min_rows": 500,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/p2-etf-trendfolios-replication-data",
+      "files": ["trendfolios_data.parquet", "data/trendfolios_data.parquet"],
+      "expected_columns": ["date", "ticker", "momentum_score", "allocation"],
+      "date_column": "date",
+      "min_rows": 200,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/etf_trend_data",
+      "files": ["trend_data.csv", "data/trend_data.csv", "trend_data.parquet"],
+      "expected_columns": ["date", "ticker", "trend_signal", "strength"],
+      "date_column": "date",
+      "min_rows": 1000,
+      "type": "mixed"
+    },
+    {
+      "name": "P2SAMAPA/fi-etf-macro-signal-master-data",
+      "files": ["macro_data.parquet", "data/macro_data.parquet", "macro_data.csv"],
+      "expected_columns": ["date", "signal_type", "value", "etf_ticker"],
+      "date_column": "date",
+      "min_rows": 500,
+      "type": "mixed"
+    },
+    {
+      "name": "P2SAMAPA/p2-etf-deepm-data",
+      "files": ["deepm_data.parquet", "data/deepm_data.parquet"],
+      "expected_columns": ["date", "ticker", "deep_features", "prediction"],
+      "date_column": "date",
+      "min_rows": 500,
+      "type": "parquet"
+    },
+    {
+      "name": "P2SAMAPA/p2-etf-momentum-maxima",
+      "files": ["momentum_maxima.parquet", "data/momentum_maxima.parquet"],
+      "expected_columns": ["date", "ticker", "momentum", "local_maxima", "window"],
+      "date_column": "date",
+      "min_rows": 100,
+      "type": "parquet"
+    }
+  ]
+}
