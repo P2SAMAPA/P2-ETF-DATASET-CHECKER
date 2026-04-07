@@ -2,6 +2,7 @@
 """
 HF Dataset Checker for P2SAMAPA ETF Datasets with NYSE Market Calendar Support
 Validates 13 datasets considering US market holidays and weekends
+Auto-discovers files (JSON, Parquet, CSV) in any folder structure
 """
 
 import json
@@ -24,110 +25,98 @@ except ImportError:
     print("Warning: exchange-calendars not installed. Install with: pip install exchange-calendars pandas-market-calendars")
 
 # Dataset configurations - 13 P2SAMAPA ETF datasets
+# Files are now auto-discovered, but we keep expected columns for validation
 DATASETS_CONFIG = [
     {
         "name": "P2SAMAPA/p2-etf-regime-predictor",
-        "files": ["regime_predictor_data.parquet"],
         "expected_columns": ["date", "ticker", "regime", "features"],
         "date_column": "date",
         "min_rows": 100,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/P2-ETF-DQN-ENGINE-DATASET",
-        "files": ["dqn_data.parquet", "data/dqn_data.parquet"],
         "expected_columns": ["state", "action", "reward", "next_state"],
         "date_column": None,
         "min_rows": 1000,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/p2-etf-deepwave-dl",
-        "files": ["deepwave_data.parquet", "data/deepwave_data.parquet"],
         "expected_columns": ["date", "ticker", "wave_features", "target"],
         "date_column": "date",
         "min_rows": 500,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/my-etf-data",
-        "files": ["etf_data.csv", "data/etf_data.csv", "etf_data.parquet"],
         "expected_columns": ["date", "ticker", "open", "high", "low", "close", "volume"],
         "date_column": "date",
         "min_rows": 1000,
-        "type": "mixed"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/etf-entropy-dataset",
-        "files": ["entropy_data.parquet", "data/entropy_data.parquet"],
         "expected_columns": ["date", "ticker", "entropy_value", "window"],
         "date_column": "date",
         "min_rows": 100,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/p2-etf-hurst-data",
-        "files": ["hurst_data.parquet", "data/hurst_data.parquet"],
         "expected_columns": ["date", "ticker", "hurst_exponent", "rs_value"],
         "date_column": "date",
         "min_rows": 100,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/p2-etf-merton-ann-data",
-        "files": ["merton_data.parquet", "data/merton_data.parquet"],
         "expected_columns": ["date", "ticker", "jump_intensity", "jump_size", "diffusion"],
         "date_column": "date",
         "min_rows": 100,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/etf-dlinear-cross-data",
-        "files": ["dlinear_data.parquet", "data/dlinear_data.parquet"],
         "expected_columns": ["date", "ticker", "seasonal", "trend", "residual"],
         "date_column": "date",
         "min_rows": 500,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/p2-etf-trendfolios-replication-data",
-        "files": ["trendfolios_data.parquet", "data/trendfolios_data.parquet"],
         "expected_columns": ["date", "ticker", "momentum_score", "allocation"],
         "date_column": "date",
         "min_rows": 200,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/etf_trend_data",
-        "files": ["trend_data.csv", "data/trend_data.csv", "trend_data.parquet"],
-        "expected_columns": ["date", "ticker", "trend_signal", "strength"],
+        "expected_columns": ["date", "ticker", "open", "high", "low", "close", "volume"],
         "date_column": "date",
         "min_rows": 1000,
-        "type": "mixed"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/fi-etf-macro-signal-master-data",
-        "files": ["macro_data.parquet", "data/macro_data.parquet", "macro_data.csv"],
         "expected_columns": ["date", "signal_type", "value", "etf_ticker"],
         "date_column": "date",
         "min_rows": 500,
-        "type": "mixed"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/p2-etf-deepm-data",
-        "files": ["deepm_data.parquet", "data/deepm_data.parquet"],
         "expected_columns": ["date", "ticker", "deep_features", "prediction"],
         "date_column": "date",
         "min_rows": 500,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     },
     {
         "name": "P2SAMAPA/p2-etf-momentum-maxima",
-        "files": ["momentum_maxima.parquet", "data/momentum_maxima.parquet"],
         "expected_columns": ["date", "ticker", "momentum", "local_maxima", "window"],
         "date_column": "date",
         "min_rows": 100,
-        "type": "parquet"
+        "file_types": [".parquet", ".csv", ".json"]
     }
 ]
 
@@ -242,6 +231,66 @@ class NYSEMarketCalendar:
 # Initialize global calendar
 nyse_calendar = NYSEMarketCalendar()
 
+def discover_files(repo_files, file_types):
+    """Auto-discover data files in the repository"""
+    data_files = []
+    
+    for file in repo_files:
+        # Skip hidden files, README, and non-data files
+        if file.startswith('.') or file.startswith('_'):
+            continue
+        if 'README' in file or 'LICENSE' in file or '.git' in file:
+            continue
+        
+        # Check if file matches any of our target extensions
+        for ext in file_types:
+            if file.endswith(ext):
+                data_files.append(file)
+                break
+    
+    # Sort by priority: parquet > csv > json (prefer structured formats)
+    def priority(f):
+        if f.endswith('.parquet'):
+            return 0
+        elif f.endswith('.csv'):
+            return 1
+        elif f.endswith('.json'):
+            return 2
+        else:
+            return 3
+    
+    return sorted(data_files, key=priority)
+
+def read_data_file(local_path, file_ext):
+    """Read data file based on extension"""
+    if file_ext == '.parquet':
+        return pd.read_parquet(local_path)
+    elif file_ext == '.csv':
+        return pd.read_csv(local_path)
+    elif file_ext == '.json':
+        # Try different JSON formats
+        try:
+            # Try reading as JSON lines first
+            return pd.read_json(local_path, lines=True)
+        except:
+            try:
+                # Try reading as regular JSON
+                return pd.read_json(local_path)
+            except:
+                # Try reading as records
+                import json
+                with open(local_path, 'r') as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    return pd.DataFrame(data)
+                elif isinstance(data, dict):
+                    # Try to normalize nested JSON
+                    return pd.json_normalize(data)
+                else:
+                    raise ValueError(f"Unsupported JSON structure in {local_path}")
+    else:
+        raise ValueError(f"Unsupported file extension: {file_ext}")
+
 def check_freshness_with_calendar(df, date_column, max_trading_days=5):
     """
     Check data freshness using NYSE trading calendar
@@ -333,55 +382,43 @@ def check_dataset(config, filter_name=None):
         # List all files in the repo
         repo_files = list_repo_files(name, token=os.environ.get("HF_TOKEN"))
         result["repo_files"] = repo_files
+        print(f"  📁 Found {len(repo_files)} files in repo")
     except Exception as e:
         result["status"] = "error"
         result["issues"].append(f"Cannot access repository: {str(e)}")
         result["health"] = "critical"
         return result
     
-    # Find which files from config actually exist
-    target_files = []
-    for expected_file in config["files"]:
-        if expected_file in repo_files:
-            target_files.append(expected_file)
-            result["files_found"].append(expected_file)
+    # Auto-discover data files
+    file_types = config.get("file_types", [".parquet", ".csv", ".json"])
+    data_files = discover_files(repo_files, file_types)
     
-    if not target_files:
-        # Try to find any parquet or csv files
-        auto_detected = [f for f in repo_files if f.endswith(('.parquet', '.csv'))]
-        if auto_detected:
-            target_files = auto_detected[:1]  # Take first found
-            result["warnings"].append(f"Using auto-detected file: {target_files[0]}")
-            result["files_found"] = target_files
-        else:
-            result["status"] = "error"
-            result["issues"].append(f"No data files found. Expected one of: {config['files']}")
-            result["health"] = "critical"
-            return result
+    if not data_files:
+        result["status"] = "error"
+        result["issues"].append(f"No data files found (looked for: {file_types}). Files in repo: {repo_files[:10]}...")
+        result["health"] = "critical"
+        return result
     
-    result["files_missing"] = list(set(config["files"]) - set(result["files_found"]))
-    if result["files_missing"]:
-        result["warnings"].append(f"Some expected files missing: {result['files_missing']}")
+    result["files_found"] = data_files
+    print(f"  📄 Found data files: {data_files[:3]}{'...' if len(data_files) > 3 else ''}")
     
-    # Download and validate the first available file
-    target_file = target_files[0]
+    # Download and validate the first available file (prioritized by format)
+    target_file = data_files[0]
+    file_ext = Path(target_file).suffix
     local_path = None
     
     try:
+        print(f"  ⬇️  Downloading {target_file}...")
         local_path = hf_hub_download(
             repo_id=name,
             filename=target_file,
             token=os.environ.get("HF_TOKEN"),
-            local_dir="temp_downloads"
+            local_dir="temp_downloads",
+            local_dir_use_symlinks=False
         )
         
-        # Read file based on extension
-        if target_file.endswith('.parquet'):
-            df = pd.read_parquet(local_path)
-        elif target_file.endswith('.csv'):
-            df = pd.read_csv(local_path)
-        else:
-            raise ValueError(f"Unsupported file format: {target_file}")
+        print(f"  📖 Reading {file_ext} file...")
+        df = read_data_file(local_path, file_ext)
         
         # Basic stats
         result["stats"] = {
@@ -389,7 +426,8 @@ def check_dataset(config, filter_name=None):
             "total_columns": len(df.columns),
             "columns": list(df.columns),
             "file_size_mb": round(os.path.getsize(local_path) / (1024 * 1024), 2),
-            "file_format": "parquet" if target_file.endswith('.parquet') else "csv"
+            "file_format": file_ext.replace('.', ''),
+            "source_file": target_file
         }
         
         # Check row count
@@ -398,10 +436,13 @@ def check_dataset(config, filter_name=None):
                 f"Row count ({len(df)}) below minimum ({config['min_rows']})"
             )
         
-        # Check columns
+        # Check columns (flexible matching)
         if "expected_columns" in config:
-            missing_cols = set(config["expected_columns"]) - set(df.columns)
-            extra_cols = set(df.columns) - set(config["expected_columns"])
+            expected = set(config["expected_columns"])
+            actual = set(df.columns)
+            
+            missing_cols = expected - actual
+            extra_cols = actual - expected
             
             if missing_cols:
                 result["issues"].append(f"Missing columns: {list(missing_cols)}")
@@ -417,7 +458,7 @@ def check_dataset(config, filter_name=None):
         high_null_cols = null_counts[null_counts > len(df) * 0.1]  # >10% null
         if len(high_null_cols) > 0:
             result["warnings"].append(
-                f"Columns with >10% null values: {dict(high_null_cols)}"
+                f"Columns with >10% null values: {dict(high_null_cols.head(5))}"
             )
         
         # Check data freshness using NYSE calendar if enabled and date column exists
@@ -450,7 +491,7 @@ def check_dataset(config, filter_name=None):
             dup_count = df.duplicated().sum()
             result["warnings"].append(f"Found {dup_count} duplicate rows")
         
-        print(f"  ✅ Loaded {len(df)} rows, {len(df.columns)} columns")
+        print(f"  ✅ Loaded {len(df)} rows, {len(df.columns)} columns from {target_file}")
         
     except Exception as e:
         result["status"] = "error"
@@ -463,7 +504,11 @@ def check_dataset(config, filter_name=None):
         if local_path and os.path.exists(local_path):
             try:
                 os.remove(local_path)
-            except:
+                # Clean up parent dirs if empty
+                parent = Path(local_path).parent
+                if parent.exists() and not any(parent.iterdir()):
+                    parent.rmdir()
+            except Exception as e:
                 pass
     
     return result
