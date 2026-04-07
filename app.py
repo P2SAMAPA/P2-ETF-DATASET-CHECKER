@@ -65,6 +65,11 @@ st.markdown("""
         margin: 0.5rem 0;
         border-radius: 4px;
     }
+    .file-info {
+        font-family: monospace;
+        font-size: 0.9rem;
+        color: #666;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -204,10 +209,12 @@ def main():
         )
         
         # Format filter
+        all_formats = list(set(d.get('stats', {}).get('file_format', 'unknown') 
+                               for d in data.get('datasets', [])))
         format_filter = st.multiselect(
             "Filter by Format",
-            ["parquet", "csv", "mixed"],
-            default=["parquet", "csv", "mixed"]
+            all_formats,
+            default=all_formats
         )
         
         # Calendar-aware freshness filter
@@ -347,6 +354,7 @@ def main():
                 'Dataset': ds['name'].split('/')[-1],
                 'Health': f"{get_health_icon(ds.get('health'))} {ds.get('health', 'unknown').upper()}",
                 'Format': stats.get('file_format', 'unknown'),
+                'Source File': stats.get('source_file', 'N/A').split('/')[-1][:20],
                 'Rows': format_number(stats.get('total_rows')),
                 'Last Date': stats.get('last_date', 'N/A')[:10] if stats.get('last_date') else 'N/A',
                 'Freshness': freshness_indicator,
@@ -361,7 +369,8 @@ def main():
             column_config={
                 "Health": st.column_config.Column(width="medium"),
                 "Dataset": st.column_config.Column(width="large"),
-                "Freshness": st.column_config.Column(width="medium")
+                "Freshness": st.column_config.Column(width="medium"),
+                "Source File": st.column_config.Column(width="medium")
             }
         )
     
@@ -382,6 +391,9 @@ def main():
                 trading_behind = ds.get('stats', {}).get('trading_days_behind', 0)
                 stale_badge = "⏰ STALE" if trading_behind > 2 else ""
                 
+                source_file = ds.get('stats', {}).get('source_file', 'N/A')
+                files_found = ds.get('files_found', [])
+                
                 with st.expander(
                     f"**{ds['name']}** {stale_badge} — "
                     f"{ds.get('stats', {}).get('file_format', 'unknown').upper()} | "
@@ -389,6 +401,15 @@ def main():
                     expanded=(health_status == 'critical')
                 ):
                     display_dataset_details(ds, calendar_active, last_trading_day)
+                    
+                    # Show file discovery info
+                    with st.expander("📁 File Discovery Info"):
+                        st.write(f"**Selected File:** `{source_file}`")
+                        st.write(f"**All Data Files Found ({len(files_found)}):**")
+                        for f in files_found[:10]:
+                            st.write(f"  • `{f}`")
+                        if len(files_found) > 10:
+                            st.write(f"  ... and {len(files_found) - 10} more")
 
     # Historical trends
     st.divider()
@@ -456,8 +477,6 @@ def display_dataset_details(ds, calendar_active, last_trading_day):
     with col3:
         st.write("**📁 Files:**")
         st.write(f"• Found: {len(ds.get('files_found', []))}")
-        for f in ds.get('files_found', [])[:3]:
-            st.write(f"  - `{f}`")
         
         missing = ds.get('files_missing', [])
         if missing:
