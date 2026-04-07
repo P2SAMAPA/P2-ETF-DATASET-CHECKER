@@ -51,8 +51,19 @@ st.markdown("""
     .dataset-card.healthy { border-left-color: #00C851; }
     .dataset-card.warning { border-left-color: #ffbb33; }
     .dataset-card.critical { border-left-color: #ff4444; }
-    .stProgress > div > div > div > div {
-        background-color: #FF6B35;
+    .calendar-info {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+    }
+    .holiday-warning {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        border-radius: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -114,10 +125,36 @@ def format_number(num):
         return str(int(num))
     return str(num)
 
+def is_weekend():
+    """Check if today is weekend"""
+    return datetime.now().weekday() >= 5
+
+def get_market_status():
+    """Get current market status message"""
+    now = datetime.now()
+    weekday = now.weekday()
+    
+    if weekday >= 5:  # Saturday or Sunday
+        days_to_monday = 7 - weekday if weekday == 6 else 1
+        next_open = now + timedelta(days=days_to_monday)
+        return "🔴 Market Closed (Weekend)", f"Opens Monday, {next_open.strftime('%B %d')}"
+    
+    # Simple hours check (9:30 AM - 4:00 PM ET)
+    hour = now.hour
+    if 9 <= hour < 16:
+        return "🟢 Market Open", "Trading hours: 9:30 AM - 4:00 PM ET"
+    elif hour < 9:
+        return "⏳ Market Pre-Open", f"Opens today at 9:30 AM ET"
+    else:
+        next_day = now + timedelta(days=1)
+        if next_day.weekday() >= 5:
+            next_day += timedelta(days=2)
+        return "🔴 Market Closed", f"Opens {next_day.strftime('%A, %B %d')}"
+
 def main():
     # Header
     st.markdown('<h1 class="main-header">📊 P2 ETF Dataset Monitor</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Real-time monitoring of 13 Hugging Face ETF datasets</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Real-time monitoring of 13 Hugging Face ETF datasets with NYSE Calendar</p>', unsafe_allow_html=True)
     
     # Load data
     data = load_data()
@@ -126,6 +163,28 @@ def main():
         st.error("⚠️ No check data found. Please run the GitHub Actions workflow first.")
         st.info("Go to: Actions → 'Check HF Datasets Status' → Run workflow")
         return
+    
+    # Market Calendar Info Banner
+    market_calendar = data.get('market_calendar', {})
+    calendar_active = market_calendar.get('active', False)
+    last_trading_day = market_calendar.get('last_trading_day', 'Unknown')
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        if calendar_active:
+            st.markdown(f"""
+            <div class="calendar-info">
+                <strong>📅 NYSE Market Calendar Active</strong><br>
+                Last Trading Day: <strong>{last_trading_day}</strong> | 
+                Data freshness checks account for weekends & US holidays
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.warning("⚠️ NYSE Calendar not active - using basic weekday checks")
+    
+    with col2:
+        status, detail = get_market_status()
+        st.info(f"{status}\n\n{detail}")
     
     # Sidebar
     with st.sidebar:
@@ -151,6 +210,10 @@ def main():
             default=["parquet", "csv", "mixed"]
         )
         
+        # Calendar-aware freshness filter
+        st.subheader("📅 Data Freshness")
+        show_stale_only = st.checkbox("Show only stale datasets", value=False)
+        
         st.divider()
         
         # Last check info
@@ -170,6 +233,15 @@ def main():
             st.metric("❌ Critical", summary.get('critical', 0))
             st.metric("📊 Total", data.get('total_datasets', 0))
         
+        # Calendar legend
+        st.divider()
+        st.caption("📅 Calendar Legend")
+        st.caption("• Trading days exclude weekends")
+        st.caption("• US holidays excluded:")
+        st.caption("  NY, MLK, Presidents, Good Friday,")
+        st.caption("  Memorial, Juneteenth, July 4th,")
+        st.caption("  Labor Day, Thanksgiving, Christmas")
+        
         st.divider()
         st.markdown("[Run Manual Check](https://github.com/P2SAMAPA/P2-ETF-DATASET-CHECKER/actions)")
     
@@ -183,6 +255,13 @@ def main():
         and d.get('stats', {}).get('file_format', 'unknown') in format_filter
     ]
     
+    # Stale data filter
+    if show_stale_only:
+        filtered_datasets = [
+            d for d in filtered_datasets 
+            if d.get('stats', {}).get('trading_days_behind', 0) > 0
+        ]
+    
     # Top metrics
     col1, col2, col3, col4, col5 = st.columns(5)
     
@@ -190,6 +269,9 @@ def main():
     healthy = sum(1 for d in datasets if d.get('health') == 'healthy')
     warning = sum(1 for d in datasets if d.get('health') == 'warning')
     critical = sum(1 for d in datasets if d.get('health') == 'critical')
+    
+    # Count stale datasets (behind on trading days)
+    stale_count = sum(1 for d in datasets if d.get('stats', {}).get('trading_days_behind', 0) > 0)
     
     with col1:
         st.metric("📊 Total", total)
@@ -201,8 +283,16 @@ def main():
     with col4:
         st.metric("❌ Critical", critical)
     with col5:
-        total_rows = sum(d.get('stats', {}).get('total_rows', 0) or 0 for d in datasets)
-        st.metric("📈 Total Rows", format_number(total_rows))
+        st.metric("⏰ Stale Data", stale_count)
+    
+    # Weekend/Holiday warning if applicable
+    if is_weekend():
+        st.markdown("""
+        <div class="holiday-warning">
+            <strong>📅 Weekend Notice:</strong> Markets are closed. Data freshness checks account for non-trading days.
+            Datasets may show as "behind" if last update was Friday - this is expected.
+        </div>
+        """, unsafe_allow_html=True)
     
     st.divider()
     
@@ -243,14 +333,24 @@ def main():
         overview_data = []
         for ds in filtered_datasets:
             stats = ds.get('stats', {})
+            trading_behind = stats.get('trading_days_behind', 0)
+            
+            # Calendar-aware freshness indicator
+            if trading_behind == 0:
+                freshness_indicator = "🟢 Current"
+            elif trading_behind <= 2:
+                freshness_indicator = f"🟡 {trading_behind}d behind"
+            else:
+                freshness_indicator = f"🔴 {trading_behind}d behind"
+            
             overview_data.append({
-                'Dataset': ds['name'].split('/')[-1],  # Short name
+                'Dataset': ds['name'].split('/')[-1],
                 'Health': f"{get_health_icon(ds.get('health'))} {ds.get('health', 'unknown').upper()}",
                 'Format': stats.get('file_format', 'unknown'),
                 'Rows': format_number(stats.get('total_rows')),
-                'Size': f"{stats.get('file_size_mb', 0)} MB",
-                'Cols': stats.get('total_columns', 'N/A'),
-                'Last Date': stats.get('last_date', 'N/A')[:10] if stats.get('last_date') else 'N/A'
+                'Last Date': stats.get('last_date', 'N/A')[:10] if stats.get('last_date') else 'N/A',
+                'Freshness': freshness_indicator,
+                'Missing Days': len(stats.get('missing_trading_days', []))
             })
         
         df_overview = pd.DataFrame(overview_data)
@@ -260,7 +360,8 @@ def main():
             hide_index=True,
             column_config={
                 "Health": st.column_config.Column(width="medium"),
-                "Dataset": st.column_config.Column(width="large")
+                "Dataset": st.column_config.Column(width="large"),
+                "Freshness": st.column_config.Column(width="medium")
             }
         )
     
@@ -277,12 +378,17 @@ def main():
             st.markdown(f"### {get_health_icon(health_status)} {health_status.upper()} ({len(status_datasets)})")
             
             for ds in status_datasets:
+                # Check if stale
+                trading_behind = ds.get('stats', {}).get('trading_days_behind', 0)
+                stale_badge = "⏰ STALE" if trading_behind > 2 else ""
+                
                 with st.expander(
-                    f"**{ds['name']}** — {ds.get('stats', {}).get('file_format', 'unknown').upper()} | "
+                    f"**{ds['name']}** {stale_badge} — "
+                    f"{ds.get('stats', {}).get('file_format', 'unknown').upper()} | "
                     f"{format_number(ds.get('stats', {}).get('total_rows', 0))} rows",
                     expanded=(health_status == 'critical')
                 ):
-                    display_dataset_details(ds)
+                    display_dataset_details(ds, calendar_active, last_trading_day)
 
     # Historical trends
     st.divider()
@@ -294,16 +400,30 @@ def main():
     else:
         st.info("Need more historical data to show trends. Run the checker multiple times.")
 
-def display_dataset_details(ds):
-    """Display detailed info for a dataset"""
+def display_dataset_details(ds, calendar_active, last_trading_day):
+    """Display detailed info for a dataset with calendar awareness"""
     col1, col2, col3 = st.columns([2, 1, 1])
     
     stats = ds.get('stats', {})
+    trading_behind = stats.get('trading_days_behind', 0)
+    missing_days = stats.get('missing_trading_days', [])
     
     with col1:
         # Health status
         health = ds.get('health', 'unknown')
         st.markdown(f"**Status:** <span class='{health}'>{health.upper()}</span>", unsafe_allow_html=True)
+        
+        # Calendar-aware freshness
+        if calendar_active and stats.get('last_date'):
+            st.write(f"**📅 Calendar Status:**")
+            st.write(f"• Last trading day: {last_trading_day}")
+            st.write(f"• Dataset last date: {stats.get('last_date', 'N/A')[:10]}")
+            st.write(f"• Trading days behind: {trading_behind}")
+            
+            if missing_days:
+                st.write(f"• Missing days: {', '.join(missing_days[:5])}")
+                if len(missing_days) > 5:
+                    st.write(f"  ... and {len(missing_days) - 5} more")
         
         # Issues
         issues = ds.get('issues', [])
@@ -331,12 +451,12 @@ def display_dataset_details(ds):
         
         freshness = stats.get('data_freshness', 'N/A')
         if freshness != 'N/A':
-            st.write(f"• Freshness: {freshness}")
+            st.write(f"• Freshness: {freshness[:50]}...")
     
     with col3:
         st.write("**📁 Files:**")
         st.write(f"• Found: {len(ds.get('files_found', []))}")
-        for f in ds.get('files_found', [])[:3]:  # Show max 3
+        for f in ds.get('files_found', [])[:3]:
             st.write(f"  - `{f}`")
         
         missing = ds.get('files_missing', [])
@@ -365,11 +485,18 @@ def display_trends(history):
         time_point = datetime.fromisoformat(check['check_time'].replace('Z', '+00:00'))
         summary = check.get('summary', {})
         
+        # Count stale datasets per check
+        stale_count = sum(
+            1 for d in check.get('datasets', [])
+            if d.get('stats', {}).get('trading_days_behind', 0) > 0
+        )
+        
         trend_data.append({
             'time': time_point,
             'healthy': summary.get('healthy', 0),
             'warning': summary.get('warning', 0),
             'critical': summary.get('critical', 0),
+            'stale': stale_count,
             'total': check.get('total_datasets', 0)
         })
     
@@ -412,18 +539,18 @@ def display_trends(history):
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        # Total datasets tracked
+        # Stale data trend
         fig = go.Figure()
         
         fig.add_trace(go.Bar(
             x=df_trend['time'],
-            y=df_trend['total'],
-            marker_color='#667eea',
-            name='Total Datasets'
+            y=df_trend['stale'],
+            marker_color='#ff6b6b',
+            name='Stale Datasets'
         ))
         
         fig.update_layout(
-            title="Total Datasets Checked",
+            title="Stale Data Trend (Trading Days Behind)",
             xaxis_title="Check Time",
             yaxis_title="Count",
             height=350,
@@ -441,7 +568,9 @@ def display_trends(history):
                 'Healthy': h.get('summary', {}).get('healthy', 0),
                 'Warning': h.get('summary', {}).get('warning', 0),
                 'Critical': h.get('summary', {}).get('critical', 0),
-                'Total': h.get('total_datasets', 0)
+                'Stale': sum(1 for d in h.get('datasets', []) if d.get('stats', {}).get('trading_days_behind', 0) > 0),
+                'Total': h.get('total_datasets', 0),
+                'Last Trading': h.get('market_calendar', {}).get('last_trading_day', 'N/A')
             }
             for h in reversed(history[-10:])  # Last 10
         ])
