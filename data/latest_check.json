@@ -1,5 +1,5 @@
 {
-  "check_time": "2026-04-08T09:30:01.397707",
+  "check_time": "2026-04-08T09:53:35.982007",
   "total_datasets": 13,
   "summary": {
     "healthy": 12,
@@ -9,7 +9,7 @@
   "datasets": [
     {
       "name": "P2SAMAPA/p2-etf-regime-predictor",
-      "checked_at": "2026-04-08T09:29:54.474497",
+      "checked_at": "2026-04-08T09:53:26.067563",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -534,7 +534,7 @@
     },
     {
       "name": "P2SAMAPA/P2-ETF-DQN-ENGINE-DATASET",
-      "checked_at": "2026-04-08T09:29:55.178680",
+      "checked_at": "2026-04-08T09:53:27.313031",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -986,7 +986,7 @@
     },
     {
       "name": "P2SAMAPA/p2-etf-deepwave-dl",
-      "checked_at": "2026-04-08T09:29:55.681893",
+      "checked_at": "2026-04-08T09:53:28.022085",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -1055,6 +1055,7 @@
         "results/eq_2014_20260402.json",
         "results/eq_2014_20260403.json",
         "results/eq_2014_20260406.json",
+        "results/eq_2014_20260408.json",
         "results/eq_2015_20260331.json",
         "results/eq_2015_20260401.json",
         "results/eq_2015_20260402.json",
@@ -1265,7 +1266,7 @@
     },
     {
       "name": "P2SAMAPA/my-etf-data",
-      "checked_at": "2026-04-08T09:29:55.999993",
+      "checked_at": "2026-04-08T09:53:28.602304",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -1359,7 +1360,7 @@
     },
     {
       "name": "P2SAMAPA/etf-entropy-dataset",
-      "checked_at": "2026-04-08T09:29:56.730940",
+      "checked_at": "2026-04-08T09:53:29.319859",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -1467,7 +1468,7 @@
     },
     {
       "name": "P2SAMAPA/p2-etf-hurst-data",
-      "checked_at": "2026-04-08T09:29:57.333998",
+      "checked_at": "2026-04-08T09:53:30.265048",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -1518,7 +1519,7 @@
     },
     {
       "name": "P2SAMAPA/p2-etf-merton-ann-data",
-      "checked_at": "2026-04-08T09:29:57.873670",
+      "checked_at": "2026-04-08T09:53:31.277747",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -1649,7 +1650,7 @@
     },
     {
       "name": "P2SAMAPA/etf-dlinear-cross-data",
-      "checked_at": "2026-04-08T09:29:58.539663",
+      "checked_at": "2026-04-08T09:53:32.112250",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -1951,7 +1952,7 @@
     },
     {
       "name": "P2SAMAPA/p2-etf-trendfolios-replication-data",
-      "checked_at": "2026-04-08T09:29:59.031036",
+      "checked_at": "2026-04-08T09:53:32.856625",
       "status": "issues_found",
       "health": "warning",
       "issues": [
@@ -2034,37 +2035,62 @@
     },
     {
       "name": "P2SAMAPA/etf_trend_data",
-      "checked_at": "2026-04-08T09:29:59.381892",
+      "checked_at": "2026-04-08T09:53:33.619957",
       "status": "ok",
       "health": "healthy",
       "issues": [],
       "warnings": [],
       "stats": {
-        "total_rows": 62294,
-        "total_columns": 8,
+        "total_rows": 4594,
+        "total_columns": 36,
         "columns": [
-          "date",
-          "open",
-          "high",
-          "low",
-          "close",
-          "adjusted_close",
-          "volume",
-          "ticker"
+          "Date",
+          "AGG",
+          "GDX",
+          "GLD",
+          "HYG",
+          "IEF",
+          "LQD",
+          "MBB",
+          "PFF",
+          "SLV",
+          "SPY",
+          "TIP",
+          "TLT",
+          "VCIT",
+          "VCLT",
+          "VGIT",
+          "VNQ",
+          "XAR",
+          "XBI",
+          "XHB",
+          "XLB",
+          "XLC",
+          "XLE",
+          "XLF",
+          "XLI",
+          "XLK",
+          "XLP",
+          "XLRE",
+          "XLU",
+          "XLV",
+          "XLY",
+          "XME",
+          "XNTK",
+          "XRT",
+          "XSD",
+          "SOFR_ANNUAL"
         ],
-        "file_format": "parquet",
-        "source_file": "data/train-00000-of-00001.parquet",
-        "last_date": "2026-02-13 00:00:00",
-        "trading_days_behind": 54
+        "file_format": "csv",
+        "source_file": "market_data.csv"
       },
       "files_found": [
-        "data/train-00000-of-00001.parquet",
         "market_data.csv"
       ]
     },
     {
       "name": "P2SAMAPA/fi-etf-macro-signal-master-data",
-      "checked_at": "2026-04-08T09:30:00.111270",
+      "checked_at": "2026-04-08T09:53:34.150416",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -2110,7 +2136,7 @@
     },
     {
       "name": "P2SAMAPA/p2-etf-deepm-data",
-      "checked_at": "2026-04-08T09:30:00.336511",
+      "checked_at": "2026-04-08T09:53:34.492180",
       "status": "ok",
       "health": "healthy",
       "issues": [],
@@ -2251,7 +2277,7 @@
     },
     {
       "name": "P2SAMAPA/p2-etf-momentum-maxima",
-      "checked_at": "2026-04-08T09:30:00.818111",
+      "checked_at": "2026-04-08T09:53:35.176169",
       "status": "ok",
       "health": "healthy",
       "issues": [],
