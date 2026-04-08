@@ -83,12 +83,12 @@ def is_valid_parquet(file_path):
             return False, f"File too small ({file_size} bytes)"
 
         with open(file_path, 'rb') as f:
-            # Check for parquet magic bytes at start and end
+            # FIX: Parquet magic bytes are b'PAR1', not b'PARP'
             header = f.read(4)
             f.seek(-4, 2)  # Seek to 4 bytes before EOF
             footer = f.read(4)
 
-            if header != b'PARP' or footer != b'PARP':
+            if header != b'PAR1' or footer != b'PAR1':
                 return False, "Missing parquet magic bytes"
 
         return True, "Valid"
@@ -97,10 +97,12 @@ def is_valid_parquet(file_path):
 
 
 def load_data_file(name, data_files):
-    """Try to load a data file, skipping corrupted parquet files"""
+    """Try to load a data file, skipping corrupted parquet files.
+    Returns (df, target_file, local_path) so caller can clean up."""
     for target_file in data_files:
         print(f"  Trying: {target_file}")
 
+        local_path = None  # FIX: always initialise before the try block
         try:
             # Download
             local_path = hf_hub_download(
@@ -118,6 +120,7 @@ def load_data_file(name, data_files):
                     print(f"  ⚠ Skipping {target_file}: {reason}")
                     if os.path.exists(local_path):
                         os.remove(local_path)
+                    local_path = None
                     continue
 
             # Read
@@ -133,19 +136,20 @@ def load_data_file(name, data_files):
                     df = pd.read_json(local_path)
 
             print(f"  ✓ Loaded: {len(df)} rows, {len(df.columns)} columns")
-            return df, target_file
+            # FIX: return local_path so the caller can clean it up
+            return df, target_file, local_path
 
         except Exception as e:
             print(f"  ⚠ Skipping {target_file}: {str(e)}")
-            # Clean up partial download
-            if 'local_path' in locals() and os.path.exists(local_path):
+            if local_path and os.path.exists(local_path):
                 try:
                     os.remove(local_path)
                 except:
                     pass
+            local_path = None
             continue
 
-    return None, None
+    return None, None, None  # FIX: return three values to match new signature
 
 
 def check_dataset(config):
@@ -165,7 +169,6 @@ def check_dataset(config):
     }
 
     try:
-        # CRITICAL FIX: Must specify repo_type="dataset"
         print("  Listing files...")
         repo_files = list_repo_files(name, repo_type="dataset")
         print(f"  ✓ Found {len(repo_files)} files")
@@ -181,8 +184,8 @@ def check_dataset(config):
 
         result["files_found"] = data_files
 
-        # Load data file (with retry logic for corrupted files)
-        df, target_file = load_data_file(name, data_files)
+        # FIX: unpack three return values (df, target_file, local_path)
+        df, target_file, local_path = load_data_file(name, data_files)
 
         if df is None:
             result["health"] = "critical"
@@ -225,8 +228,8 @@ def check_dataset(config):
             result["health"] = "healthy"
             result["status"] = "ok"
 
-        # Cleanup
-        if os.path.exists(local_path):
+        # FIX: local_path is now properly available here from load_data_file's return value
+        if local_path and os.path.exists(local_path):
             os.remove(local_path)
 
     except Exception as e:
